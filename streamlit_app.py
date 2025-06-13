@@ -22,6 +22,7 @@ MANIFEST_12 = '''<?xml version="1.0" encoding="UTF-8"?>
   <resources>
     <resource identifier="RES" type="webcontent" adlcp:scormtype="sco" href="index.html">
       <file href="index.html"/>
+      <file href="scorm.js"/>
     </resource>
   </resources>
 </manifest>
@@ -44,47 +45,37 @@ MANIFEST_2004 = '''<?xml version="1.0" encoding="UTF-8"?>
   <resources>
     <resource identifier="RES" type="webcontent" adlcp:scormType="sco" href="index.html">
       <file href="index.html"/>
+      <file href="scorm.js"/>
     </resource>
   </resources>
 </manifest>
 '''
 
-# HTML + JS avec minuterie
+# HTML + JS avec minuterie et pipwerks SCORM wrapper
 HTML_TEMPLATE = '''<!DOCTYPE html>
 <html>
 <head>
   <title>SCORM Content</title>
+  <script src="scorm.js"></script>
   <script>
-    let scormAPI = null;
     let elapsed = 0;
     const requiredTime = {time};
 
-    function findAPI(win) {
-      if (win.API) return win.API;
-      if (win.parent && win.parent !== win) return findAPI(win.parent);
-      return null;
-    }
-
-    function initSCORM() {
-      scormAPI = findAPI(window);
-      if (scormAPI) scormAPI.LMSInitialize("");
-    }
-
-    function checkTime() {
-      elapsed++;
-      if (elapsed >= requiredTime) {
-        if (scormAPI) {
-          scormAPI.LMSSetValue("cmi.core.lesson_status", "completed");
-          scormAPI.LMSCommit("");
-        }
-        clearInterval(timer);
-      }
-    }
-
     window.onload = function() {
-      initSCORM();
-      timer = setInterval(checkTime, 1000);
+      pipwerks.SCORM.version = "1.2";
+      pipwerks.SCORM.init();
+
       document.getElementById("target").src = "{url}";
+
+      const timer = setInterval(() => {
+        elapsed++;
+        if (elapsed >= requiredTime) {
+          pipwerks.SCORM.set("cmi.core.lesson_status", "completed");
+          pipwerks.SCORM.save();
+          pipwerks.SCORM.quit();
+          clearInterval(timer);
+        }
+      }, 1000);
     }
   </script>
 </head>
@@ -93,6 +84,43 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
   <iframe id="target" width="100%" height="600px"></iframe>
 </body>
 </html>
+'''
+
+# pipwerks SCORM wrapper JS minimal (version 1.2)
+SCORM_JS = '''// pipwerks SCORM API Wrapper (simplifié)
+var pipwerks = {
+  SCORM: {
+    version: "1.2",
+    handleCompletion: true,
+    api: null,
+    init: function() {
+      this.api = this.getAPIHandle();
+      if (this.api === null) return false;
+      return this.api.LMSInitialize("") === "true";
+    },
+    get: function(parameter) {
+      return this.api ? this.api.LMSGetValue(parameter) : null;
+    },
+    set: function(parameter, value) {
+      return this.api ? this.api.LMSSetValue(parameter, value) === "true" : false;
+    },
+    save: function() {
+      return this.api ? this.api.LMSCommit("") === "true" : false;
+    },
+    quit: function() {
+      return this.api ? this.api.LMSFinish("") === "true" : false;
+    },
+    getAPIHandle: function() {
+      var win = window;
+      while (win) {
+        if (win.API) return win.API;
+        if (win.parent && win.parent !== win) win = win.parent;
+        else break;
+      }
+      return null;
+    }
+  }
+};
 '''
 
 # --- Streamlit App ---
@@ -108,6 +136,7 @@ if st.button("Générer le SCORM"):
     with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
         html_content = HTML_TEMPLATE.replace("{url}", url).replace("{time}", str(duration))
         zf.writestr("index.html", html_content)
+        zf.writestr("scorm.js", SCORM_JS)
 
         if scorm_version == "SCORM 1.2":
             zf.writestr("imsmanifest.xml", MANIFEST_12)
