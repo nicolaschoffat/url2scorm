@@ -51,7 +51,7 @@ MANIFEST_2004 = '''<?xml version="1.0" encoding="UTF-8"?>
 </manifest>
 '''
 
-# HTML + JS avec minuterie et pipwerks SCORM wrapper
+# HTML + JS avec minuterie et pipwerks SCORM wrapper amélioré
 HTML_TEMPLATE = '''<!DOCTYPE html>
 <html>
 <head>
@@ -64,17 +64,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     window.onload = function() {
       pipwerks.SCORM.version = "1.2";
       pipwerks.SCORM.init();
-
       document.getElementById("target").src = "{url}";
 
       const timer = setInterval(() => {
         elapsed++;
+        const progress = Math.min((elapsed / requiredTime) * 100, 100);
+
+        pipwerks.SCORM.set("cmi.core.score.raw", progress.toFixed(0));
+        pipwerks.SCORM.set("cmi.core.lesson_location", elapsed.toString());
+
         if (elapsed >= requiredTime) {
           pipwerks.SCORM.set("cmi.core.lesson_status", "completed");
-          pipwerks.SCORM.save();
-          pipwerks.SCORM.quit();
-          clearInterval(timer);
+        } else {
+          pipwerks.SCORM.set("cmi.core.lesson_status", "incomplete");
         }
+
+        pipwerks.SCORM.save();
       }, 1000);
     }
   </script>
@@ -145,3 +150,4 @@ if st.button("Générer le SCORM"):
 
     st.success("Fichier SCORM généré !")
     st.download_button("📥 Télécharger le paquet SCORM", data=buffer.getvalue(), file_name="scorm_package.zip")
+
